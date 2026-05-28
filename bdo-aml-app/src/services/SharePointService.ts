@@ -38,6 +38,7 @@ export interface DocumentUpload {
   size: string;
   uploadDate: string;
   uploadedBy: string;
+  webUrl?: string;
 }
 
 export interface AuditLog {
@@ -47,6 +48,31 @@ export interface AuditLog {
   role: string;
   action: string;
   comments: string;
+}
+
+export interface RiskIndicators {
+  client: {
+    pepOrAssociate: boolean;
+    npo: boolean;
+    complexOwnership: boolean;
+    cashIntensive: boolean;
+    intermediaries: boolean;
+    other: string;
+  };
+  geography: {
+    fatfGreyListed: boolean;
+    fatfBlackListed: boolean;
+    sanctionsExposed: boolean;
+    highCorruptionOrConflict: boolean;
+    other: string;
+  };
+  productService: {
+    trustOrCompanyFormation: boolean;
+    manageClientFundsOrAssets: boolean;
+    crossBorderTransactions: boolean;
+    highValueOrComplexTransactions: boolean;
+    other: string;
+  };
 }
 
 export interface OnboardingCase {
@@ -73,6 +99,8 @@ export interface OnboardingCase {
     deliveryChannel: 'Low' | 'Medium' | 'High';
     paymentMode: 'Low' | 'Medium' | 'High';
   };
+  /** Section 3 risk indicator checklist (A/B/C) */
+  riskIndicators: RiskIndicators;
   overallRiskRating: 'Low' | 'Medium' | 'High';
   riskRationale: string;
   cddMeasures: {
@@ -114,7 +142,21 @@ export interface OnboardingCase {
     engagementPartner?: { name: string; date: string; sign: string };
     riskPartner?: { name: string; date: string; sign: string };
   };
-  status: 'Draft' | 'Pending Compliance' | 'Pending Engagement Partner' | 'Pending Risk Partner' | 'Approved' | 'Returned' | 'Rejected';
+  reviewComments: {
+    compliance: string;
+    engagementPartner: string;
+    riskPartner: string;
+  };
+  status:
+    | 'Draft'
+    | 'Pending Compliance'
+    | 'Pending Engagement Partner'
+    | 'Pending Risk Partner'
+    | 'ReturnedToPreparer'
+    | 'ReturnedToCompliance'
+    | 'ReturnedToEP'
+    | 'Closed'
+    | 'Rejected';
   currentHandler: string;
   /** Reviewer emails assigned by preparer at sign-off (Step 7) */
   workflowAssignees: WorkflowAssignees;
@@ -190,6 +232,30 @@ class MockSharePointStore {
           deliveryChannel: 'Low',
           paymentMode: 'High',
         },
+        riskIndicators: {
+          client: {
+            pepOrAssociate: false,
+            npo: false,
+            complexOwnership: true,
+            cashIntensive: true,
+            intermediaries: false,
+            other: '',
+          },
+          geography: {
+            fatfGreyListed: false,
+            fatfBlackListed: false,
+            sanctionsExposed: false,
+            highCorruptionOrConflict: false,
+            other: '',
+          },
+          productService: {
+            trustOrCompanyFormation: false,
+            manageClientFundsOrAssets: false,
+            crossBorderTransactions: true,
+            highValueOrComplexTransactions: true,
+            other: '',
+          },
+        },
         overallRiskRating: 'High',
         riskRationale: 'High-risk extractive sector client.',
         cddMeasures: {
@@ -216,6 +282,11 @@ class MockSharePointStore {
         reviewFrequency: '',
         nextReviewDate: '',
         signatures: {},
+        reviewComments: {
+          compliance: '',
+          engagementPartner: '',
+          riskPartner: '',
+        },
         status: 'Draft',
         currentHandler: 't.moyo@bdo.co.zw',
         workflowAssignees: getDefaultWorkflowAssignees(),
@@ -301,56 +372,67 @@ class MockSharePointStore {
       nextHandler = '';
       c.decision = 'Client declined';
     } else if (action === 'Return') {
-      nextStatus = 'Returned';
-      nextHandler = c.auditLogs.find((l) => l.action === 'CREATED')?.actor ?? '';
-    } else if (role === 'Compliance') {
-      c.signatures.compliance = {
-        name: actor,
-        date: timestamp,
-        sign: signatureSign,
-      };
-      if (c.overallRiskRating === 'High' || c.pepStatus.isPep) {
-        nextStatus = 'Pending Risk Partner';
-        nextHandler = c.workflowAssignees.riskPartnerEmail.toLowerCase();
-      } else {
-        nextStatus = 'Pending Engagement Partner';
+      if (role === 'Compliance') {
+        nextStatus = 'ReturnedToPreparer';
+        nextHandler = c.auditLogs.find((l) => l.action === 'CREATED')?.actor ?? '';
+      } else if (role === 'EngagementPartner') {
+        nextStatus = 'ReturnedToCompliance';
+        nextHandler = c.workflowAssignees.complianceEmail.toLowerCase();
+      } else if (role === 'RiskPartner') {
+        nextStatus = 'ReturnedToEP';
         nextHandler = c.workflowAssignees.engagementPartnerEmail.toLowerCase();
       }
-    } else if (role === 'RiskPartner') {
-      c.signatures.riskPartner = {
+    } else if (role === 'Compliance') {
+      c.reviewComments.compliance = comments.trim();
+      c.signatures.compliance = {
         name: actor,
         date: timestamp,
         sign: signatureSign,
       };
       nextStatus = 'Pending Engagement Partner';
       nextHandler = c.workflowAssignees.engagementPartnerEmail.toLowerCase();
+    } else if (role === 'RiskPartner') {
+      c.reviewComments.riskPartner = comments.trim();
+      c.signatures.riskPartner = {
+        name: actor,
+        date: timestamp,
+        sign: signatureSign,
+      };
+      nextStatus = 'Closed';
+      nextHandler = '';
+
+      c.decision = 'Client accepted subject to conditions/EDD';
+
+      const baseDate = new Date();
+      baseDate.setMonth(baseDate.getMonth() + 6);
+      c.reviewFrequency = 'Enhanced and continuous';
+      c.nextReviewDate = baseDate.toISOString().split('T')[0];
     } else if (role === 'EngagementPartner') {
+      c.reviewComments.engagementPartner = comments.trim();
       c.signatures.engagementPartner = {
         name: actor,
         date: timestamp,
         sign: signatureSign,
       };
-      nextStatus = 'Approved';
-      nextHandler = '';
-
-      if (c.overallRiskRating === 'High' || c.pepStatus.isPep) {
-        c.decision = 'Client accepted subject to conditions/EDD';
-      } else {
-        c.decision = 'Client accepted';
-      }
-
-      const baseDate = new Date();
       if (c.overallRiskRating === 'High') {
-        baseDate.setMonth(baseDate.getMonth() + 6);
-        c.reviewFrequency = 'Enhanced and continuous';
-      } else if (c.overallRiskRating === 'Medium') {
-        baseDate.setFullYear(baseDate.getFullYear() + 1);
-        c.reviewFrequency = 'Annual';
+        nextStatus = 'Pending Risk Partner';
+        nextHandler = c.workflowAssignees.riskPartnerEmail.toLowerCase();
       } else {
-        baseDate.setFullYear(baseDate.getFullYear() + 2);
-        c.reviewFrequency = 'Periodic';
+        nextStatus = 'Closed';
+        nextHandler = '';
+
+        c.decision = 'Client accepted';
+
+        const baseDate = new Date();
+        if (c.overallRiskRating === 'Medium') {
+          baseDate.setFullYear(baseDate.getFullYear() + 1);
+          c.reviewFrequency = 'Annual';
+        } else {
+          baseDate.setFullYear(baseDate.getFullYear() + 2);
+          c.reviewFrequency = 'Periodic';
+        }
+        c.nextReviewDate = baseDate.toISOString().split('T')[0];
       }
-      c.nextReviewDate = baseDate.toISOString().split('T')[0];
     }
 
     c.status = nextStatus;
@@ -385,6 +467,7 @@ class MockSharePointStore {
       size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
       uploadDate: new Date().toISOString().split('T')[0],
       uploadedBy: actor,
+      webUrl: undefined,
     };
     c.documents.push(doc);
     this.saveToStorage();

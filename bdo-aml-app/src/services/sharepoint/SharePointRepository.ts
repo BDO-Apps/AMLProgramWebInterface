@@ -127,7 +127,7 @@ export class SharePointRepository {
       return cases.filter(
         (c) =>
           c.status === 'Draft' ||
-          c.status === 'Returned' ||
+          c.status === 'ReturnedToPreparer' ||
           c.currentHandler.toLowerCase() === normalizedEmail ||
           c.auditLogs.some((log) => log.actor.toLowerCase() === normalizedEmail)
       );
@@ -377,56 +377,69 @@ export class SharePointRepository {
       nextHandler = '';
       targetCase.decision = 'Client declined';
     } else if (action === 'Return') {
-      nextStatus = 'Returned';
-      nextHandler =
-        targetCase.auditLogs.find((l) => l.action === 'CREATED')?.actor ?? '';
-    } else if (role === 'Compliance') {
-      targetCase.signatures.compliance = {
-        name: actor,
-        date: timestamp,
-        sign: signatureSign,
-      };
-      if (targetCase.overallRiskRating === 'High' || targetCase.pepStatus.isPep) {
-        nextStatus = 'Pending Risk Partner';
-        nextHandler = targetCase.workflowAssignees.riskPartnerEmail.toLowerCase();
-      } else {
-        nextStatus = 'Pending Engagement Partner';
+      if (role === 'Compliance') {
+        nextStatus = 'ReturnedToPreparer';
+        nextHandler = targetCase.auditLogs.find((l) => l.action === 'CREATED')?.actor ?? '';
+      } else if (role === 'EngagementPartner') {
+        nextStatus = 'ReturnedToCompliance';
+        nextHandler = targetCase.workflowAssignees.complianceEmail.toLowerCase();
+      } else if (role === 'RiskPartner') {
+        nextStatus = 'ReturnedToEP';
         nextHandler = targetCase.workflowAssignees.engagementPartnerEmail.toLowerCase();
       }
-    } else if (role === 'RiskPartner') {
-      targetCase.signatures.riskPartner = {
+    } else if (role === 'Compliance') {
+      targetCase.reviewComments.compliance = comments.trim();
+      targetCase.signatures.compliance = {
         name: actor,
         date: timestamp,
         sign: signatureSign,
       };
       nextStatus = 'Pending Engagement Partner';
       nextHandler = targetCase.workflowAssignees.engagementPartnerEmail.toLowerCase();
+    } else if (role === 'RiskPartner') {
+      targetCase.reviewComments.riskPartner = comments.trim();
+      targetCase.signatures.riskPartner = {
+        name: actor,
+        date: timestamp,
+        sign: signatureSign,
+      };
+      nextStatus = 'Closed';
+      nextHandler = '';
+
+      // Final close-out (only occurs after Risk Partner on High risk)
+      targetCase.decision = 'Client accepted subject to conditions/EDD';
+
+      const baseDate = new Date();
+      baseDate.setMonth(baseDate.getMonth() + 6);
+      targetCase.reviewFrequency = 'Enhanced and continuous';
+      targetCase.nextReviewDate = baseDate.toISOString().split('T')[0];
     } else if (role === 'EngagementPartner') {
+      targetCase.reviewComments.engagementPartner = comments.trim();
       targetCase.signatures.engagementPartner = {
         name: actor,
         date: timestamp,
         sign: signatureSign,
       };
-      nextStatus = 'Approved';
-      nextHandler = '';
-      if (targetCase.overallRiskRating === 'High' || targetCase.pepStatus.isPep) {
-        targetCase.decision = 'Client accepted subject to conditions/EDD';
-      } else {
-        targetCase.decision = 'Client accepted';
-      }
-
-      const baseDate = new Date();
       if (targetCase.overallRiskRating === 'High') {
-        baseDate.setMonth(baseDate.getMonth() + 6);
-        targetCase.reviewFrequency = 'Enhanced and continuous';
-      } else if (targetCase.overallRiskRating === 'Medium') {
-        baseDate.setFullYear(baseDate.getFullYear() + 1);
-        targetCase.reviewFrequency = 'Annual';
+        // High risk invokes Risk Partner AFTER Engagement Partner
+        nextStatus = 'Pending Risk Partner';
+        nextHandler = targetCase.workflowAssignees.riskPartnerEmail.toLowerCase();
       } else {
-        baseDate.setFullYear(baseDate.getFullYear() + 2);
-        targetCase.reviewFrequency = 'Periodic';
+        // Medium/Low finalizes here
+        nextStatus = 'Closed';
+        nextHandler = '';
+        targetCase.decision = 'Client accepted';
+
+        const baseDate = new Date();
+        if (targetCase.overallRiskRating === 'Medium') {
+          baseDate.setFullYear(baseDate.getFullYear() + 1);
+          targetCase.reviewFrequency = 'Annual';
+        } else {
+          baseDate.setFullYear(baseDate.getFullYear() + 2);
+          targetCase.reviewFrequency = 'Periodic';
+        }
+        targetCase.nextReviewDate = baseDate.toISOString().split('T')[0];
       }
-      targetCase.nextReviewDate = baseDate.toISOString().split('T')[0];
     }
 
     targetCase.status = nextStatus;
@@ -513,6 +526,7 @@ export class SharePointRepository {
       size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
       uploadDate: new Date().toISOString().split('T')[0],
       uploadedBy: actor,
+      webUrl: driveItem.webUrl,
     };
   }
 

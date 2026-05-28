@@ -73,6 +73,22 @@ export function buildClientOnboardingLogicalFields(
     RiskRatingPaymentMode: caseData.riskRatings.paymentMode,
     OverallRiskRating: caseData.overallRiskRating,
     RiskRationale: caseData.riskRationale,
+    ClientRiskPEPOrAssociate: caseData.riskIndicators.client.pepOrAssociate,
+    ClientRiskNPO: caseData.riskIndicators.client.npo,
+    ClientRiskComplexOwnership: caseData.riskIndicators.client.complexOwnership,
+    ClientRiskCashIntensive: caseData.riskIndicators.client.cashIntensive,
+    ClientRiskIntermediaries: caseData.riskIndicators.client.intermediaries,
+    ClientRiskOther: caseData.riskIndicators.client.other,
+    GeoRiskFATFGreyListed: caseData.riskIndicators.geography.fatfGreyListed,
+    GeoRiskFATFBlackListed: caseData.riskIndicators.geography.fatfBlackListed,
+    GeoRiskSanctionsExposed: caseData.riskIndicators.geography.sanctionsExposed,
+    GeoRiskHighCorruptionConflict: caseData.riskIndicators.geography.highCorruptionOrConflict,
+    GeoRiskOther: caseData.riskIndicators.geography.other,
+    ProdRiskTrustCompanyFormation: caseData.riskIndicators.productService.trustOrCompanyFormation,
+    ProdRiskManageClientFundsAssets: caseData.riskIndicators.productService.manageClientFundsOrAssets,
+    ProdRiskCrossBorderTransactions: caseData.riskIndicators.productService.crossBorderTransactions,
+    ProdRiskHighValueComplexTransactions: caseData.riskIndicators.productService.highValueOrComplexTransactions,
+    ProdRiskOther: caseData.riskIndicators.productService.other,
     CDDIdentityVerified: caseData.cddMeasures.identityVerified,
     CDDBOVerified: caseData.cddMeasures.boVerified,
     CDDNatureUnderstood: caseData.cddMeasures.natureUnderstood,
@@ -97,6 +113,7 @@ export function buildClientOnboardingLogicalFields(
     ComplianceReviewerEmail: caseData.workflowAssignees.complianceEmail,
     EngagementPartnerReviewerEmail: caseData.workflowAssignees.engagementPartnerEmail,
     RiskPartnerReviewerEmail: caseData.workflowAssignees.riskPartnerEmail,
+    WorkflowAssigneesJson: JSON.stringify(caseData.workflowAssignees),
     LastUpdated: caseData.lastUpdated,
   };
 
@@ -127,6 +144,9 @@ export function buildClientOnboardingLogicalFields(
     fields.RiskPartnerSignDate = sig.riskPartner.date;
     fields.RiskPartnerSignText = sig.riskPartner.sign;
   }
+  fields.ComplianceReviewComment = caseData.reviewComments.compliance;
+  fields.EPReviewComment = caseData.reviewComments.engagementPartner;
+  fields.RPReviewComment = caseData.reviewComments.riskPartner;
 
   return fields;
 }
@@ -154,6 +174,24 @@ export async function caseToSharePointFields(
     delete logical.ContactAddress;
     delete logical.ContactEmail;
     delete logical.ContactPhone;
+  }
+
+  const hasAnyReviewerEmailFlat = [
+    ...(aliasMaps.clientOnboarding.ComplianceReviewerEmail ?? []),
+    ...(aliasMaps.clientOnboarding.EngagementPartnerReviewerEmail ?? []),
+    ...(aliasMaps.clientOnboarding.RiskPartnerReviewerEmail ?? []),
+  ].some((a) => columnNames.has(a));
+
+  const hasReviewerJson = (aliasMaps.clientOnboarding.WorkflowAssigneesJson ?? []).some((a) =>
+    columnNames.has(a)
+  );
+
+  // If the list doesn't have the 3 flat reviewer email columns, persist as JSON fallback
+  if (!hasAnyReviewerEmailFlat && hasReviewerJson) {
+    logical.WorkflowAssigneesJson = JSON.stringify(caseData.workflowAssignees);
+    delete logical.ComplianceReviewerEmail;
+    delete logical.EngagementPartnerReviewerEmail;
+    delete logical.RiskPartnerReviewerEmail;
   }
 
   const mapped = await columnSchema.mapFields(
@@ -201,9 +239,10 @@ export function sharePointItemToCase(
         phone?: string;
       };
       contactInfo = {
-        address: parsed.address ?? contactInfo.address,
-        email: parsed.email ?? contactInfo.email,
-        phone: parsed.phone ?? contactInfo.phone,
+        // Prefer flat columns when present; only fall back to JSON for blanks.
+        address: contactInfo.address || parsed.address || '',
+        email: contactInfo.email || parsed.email || '',
+        phone: contactInfo.phone || parsed.phone || '',
       };
     } catch {
       /* keep flat fields */
@@ -240,6 +279,30 @@ export function sharePointItemToCase(
       productService: readChoice(f, A.RiskRatingProductService ?? ['RiskRatingProductService'], 'Low') as 'Low' | 'Medium' | 'High',
       deliveryChannel: readChoice(f, A.RiskRatingDeliveryChannel ?? ['RiskRatingDeliveryChannel'], 'Low') as 'Low' | 'Medium' | 'High',
       paymentMode: readChoice(f, A.RiskRatingPaymentMode ?? ['RiskRatingPaymentMode'], 'Low') as 'Low' | 'Medium' | 'High',
+    },
+    riskIndicators: {
+      client: {
+        pepOrAssociate: asBool(columnSchema.getFieldValue(f, A.ClientRiskPEPOrAssociate ?? ['ClientRiskPEPOrAssociate'])),
+        npo: asBool(columnSchema.getFieldValue(f, A.ClientRiskNPO ?? ['ClientRiskNPO'])),
+        complexOwnership: asBool(columnSchema.getFieldValue(f, A.ClientRiskComplexOwnership ?? ['ClientRiskComplexOwnership'])),
+        cashIntensive: asBool(columnSchema.getFieldValue(f, A.ClientRiskCashIntensive ?? ['ClientRiskCashIntensive'])),
+        intermediaries: asBool(columnSchema.getFieldValue(f, A.ClientRiskIntermediaries ?? ['ClientRiskIntermediaries'])),
+        other: readChoice(f, A.ClientRiskOther ?? ['ClientRiskOther'], ''),
+      },
+      geography: {
+        fatfGreyListed: asBool(columnSchema.getFieldValue(f, A.GeoRiskFATFGreyListed ?? ['GeoRiskFATFGreyListed'])),
+        fatfBlackListed: asBool(columnSchema.getFieldValue(f, A.GeoRiskFATFBlackListed ?? ['GeoRiskFATFBlackListed'])),
+        sanctionsExposed: asBool(columnSchema.getFieldValue(f, A.GeoRiskSanctionsExposed ?? ['GeoRiskSanctionsExposed'])),
+        highCorruptionOrConflict: asBool(columnSchema.getFieldValue(f, A.GeoRiskHighCorruptionConflict ?? ['GeoRiskHighCorruptionConflict'])),
+        other: readChoice(f, A.GeoRiskOther ?? ['GeoRiskOther'], ''),
+      },
+      productService: {
+        trustOrCompanyFormation: asBool(columnSchema.getFieldValue(f, A.ProdRiskTrustCompanyFormation ?? ['ProdRiskTrustCompanyFormation'])),
+        manageClientFundsOrAssets: asBool(columnSchema.getFieldValue(f, A.ProdRiskManageClientFundsAssets ?? ['ProdRiskManageClientFundsAssets'])),
+        crossBorderTransactions: asBool(columnSchema.getFieldValue(f, A.ProdRiskCrossBorderTransactions ?? ['ProdRiskCrossBorderTransactions'])),
+        highValueOrComplexTransactions: asBool(columnSchema.getFieldValue(f, A.ProdRiskHighValueComplexTransactions ?? ['ProdRiskHighValueComplexTransactions'])),
+        other: readChoice(f, A.ProdRiskOther ?? ['ProdRiskOther'], ''),
+      },
     },
     overallRiskRating: readChoice(f, A.OverallRiskRating ?? ['OverallRiskRating'], 'Low') as 'Low' | 'Medium' | 'High',
     riskRationale: readChoice(f, A.RiskRationale ?? ['RiskRationale'], ''),
@@ -308,25 +371,61 @@ export function sharePointItemToCase(
           }
         : undefined,
     },
+    reviewComments: {
+      compliance: readChoice(f, A.ComplianceReviewComment ?? ['ComplianceReviewComment'], ''),
+      engagementPartner: readChoice(f, A.EPReviewComment ?? ['EPReviewComment'], ''),
+      riskPartner: readChoice(f, A.RPReviewComment ?? ['RPReviewComment'], ''),
+    },
     status: readChoice(f, A.WorkflowStatus ?? ['WorkflowStatus'], 'Draft') as OnboardingCase['status'],
     currentHandler,
-    workflowAssignees: {
-      complianceEmail: readChoice(
+    workflowAssignees: (() => {
+      const fromFlat = {
+        complianceEmail: readChoice(
+          f,
+          A.ComplianceReviewerEmail ?? ['ComplianceReviewerEmail'],
+          ''
+        ).toLowerCase(),
+        engagementPartnerEmail: readChoice(
+          f,
+          A.EngagementPartnerReviewerEmail ?? ['EngagementPartnerReviewerEmail'],
+          ''
+        ).toLowerCase(),
+        riskPartnerEmail: readChoice(
+          f,
+          A.RiskPartnerReviewerEmail ?? ['RiskPartnerReviewerEmail'],
+          ''
+        ).toLowerCase(),
+      };
+
+      const raw = columnSchema.getFieldValue(
         f,
-        A.ComplianceReviewerEmail ?? ['ComplianceReviewerEmail'],
-        getDefaultWorkflowAssignees().complianceEmail
-      ).toLowerCase(),
-      engagementPartnerEmail: readChoice(
-        f,
-        A.EngagementPartnerReviewerEmail ?? ['EngagementPartnerReviewerEmail'],
-        getDefaultWorkflowAssignees().engagementPartnerEmail
-      ).toLowerCase(),
-      riskPartnerEmail: readChoice(
-        f,
-        A.RiskPartnerReviewerEmail ?? ['RiskPartnerReviewerEmail'],
-        getDefaultWorkflowAssignees().riskPartnerEmail
-      ).toLowerCase(),
-    },
+        A.WorkflowAssigneesJson ?? ['WorkflowAssigneesJson']
+      );
+      if (raw && typeof raw === 'string') {
+        try {
+          const parsed = JSON.parse(raw) as Partial<OnboardingCase['workflowAssignees']>;
+          return {
+            complianceEmail: (fromFlat.complianceEmail || parsed.complianceEmail || '').toLowerCase(),
+            engagementPartnerEmail: (fromFlat.engagementPartnerEmail || parsed.engagementPartnerEmail || '').toLowerCase(),
+            riskPartnerEmail: (fromFlat.riskPartnerEmail || parsed.riskPartnerEmail || '').toLowerCase(),
+          };
+        } catch {
+          /* ignore */
+        }
+      }
+
+      // If nothing is stored (flat columns missing), keep safe defaults for UX.
+      if (!fromFlat.complianceEmail && !fromFlat.engagementPartnerEmail && !fromFlat.riskPartnerEmail) {
+        return getDefaultWorkflowAssignees();
+      }
+
+      return {
+        complianceEmail: fromFlat.complianceEmail || getDefaultWorkflowAssignees().complianceEmail,
+        engagementPartnerEmail:
+          fromFlat.engagementPartnerEmail || getDefaultWorkflowAssignees().engagementPartnerEmail,
+        riskPartnerEmail: fromFlat.riskPartnerEmail || getDefaultWorkflowAssignees().riskPartnerEmail,
+      };
+    })(),
     documents,
     auditLogs,
     office: readChoice(f, A.Office ?? ['Office'], 'Zimbabwe') as 'Zimbabwe' | 'Malawi',
@@ -439,6 +538,7 @@ export function driveFileToDocument(
     name: string;
     size: number;
     createdDateTime: string;
+    webUrl?: string;
     fields: Record<string, unknown>;
   }
 ): DocumentUpload {
@@ -451,6 +551,7 @@ export function driveFileToDocument(
     size: formatFileSize(file.size),
     uploadDate: file.createdDateTime.split('T')[0],
     uploadedBy: readChoice(file.fields, A.UploadedBy ?? ['UploadedBy'], ''),
+    webUrl: file.webUrl,
   };
 }
 

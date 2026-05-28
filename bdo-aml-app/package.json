@@ -12,6 +12,7 @@
   "dependencies": {
     "@azure/msal-browser": "^4.26.2",
     "@azure/msal-react": "^3.0.22",
+    "jspdf": "^4.2.1",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"

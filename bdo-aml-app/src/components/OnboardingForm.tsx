@@ -3,6 +3,7 @@ import {
   FileText, ChevronRight, ChevronLeft, Save, 
   Send, Plus, Trash2, Upload, ShieldCheck, Check, Info
 } from 'lucide-react';
+import { downloadCasePdfExtract } from '../utils/pdfExport';
 import { getDefaultWorkflowAssignees, isValidEmail } from '../config/workflowDefaults';
 import { sharePointService } from '../services/SharePointService';
 import type { OnboardingCase, Director, BeneficialOwner, DocumentUpload } from '../services/SharePointService';
@@ -45,6 +46,30 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
       beneficialOwners: [],
       hasBeneficialOwners: false,
       riskRatings: { client: 'Low', geography: 'Low', productService: 'Low', deliveryChannel: 'Low', paymentMode: 'Low' },
+      riskIndicators: {
+        client: {
+          pepOrAssociate: false,
+          npo: false,
+          complexOwnership: false,
+          cashIntensive: false,
+          intermediaries: false,
+          other: '',
+        },
+        geography: {
+          fatfGreyListed: false,
+          fatfBlackListed: false,
+          sanctionsExposed: false,
+          highCorruptionOrConflict: false,
+          other: '',
+        },
+        productService: {
+          trustOrCompanyFormation: false,
+          manageClientFundsOrAssets: false,
+          crossBorderTransactions: false,
+          highValueOrComplexTransactions: false,
+          other: '',
+        },
+      },
       overallRiskRating: 'Low',
       riskRationale: '',
       cddMeasures: { identityVerified: false, boVerified: false, natureUnderstood: false, pepScreened: false, sanctionsScreened: false, adverseMediaScreened: false },
@@ -57,6 +82,11 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
       reviewFrequency: '',
       nextReviewDate: '',
       signatures: {},
+      reviewComments: {
+        compliance: '',
+        engagementPartner: '',
+        riskPartner: '',
+      },
       status: 'Draft',
       currentHandler: currentUser.email,
       workflowAssignees: getDefaultWorkflowAssignees(),
@@ -87,7 +117,7 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
 
   // Is Form read-only? (Read-only for everyone after submission, or read-only for non-preparers)
   const isReadOnly = useMemo(() => {
-    if (formData.status !== 'Draft' && formData.status !== 'Returned') {
+    if (formData.status !== 'Draft' && formData.status !== 'ReturnedToPreparer') {
       return true;
     }
     return currentUser.role !== 'Preparer';
@@ -820,6 +850,183 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
 
             </div>
 
+            {/* Section 3 Risk Indicator Checklist (A/B/C) */}
+            <div style={{ borderTop: '1.5px solid var(--color-border)', paddingTop: '1.25rem', marginTop: '0.25rem' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-primary)', display: 'block', marginBottom: '0.75rem' }}>
+                Section 3: Risk Indicator Checklist (Mandatory Capture)
+              </span>
+
+              <div className="grid-2" style={{ gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+                {/* A. Client Risk Indicators */}
+                <div className="card" style={{ padding: '1rem' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.75rem' }}>
+                    A. Client Risk Indicators
+                  </div>
+
+                  {[
+                    { key: 'pepOrAssociate', label: 'Politically Exposed Person (PEP) or close associate' },
+                    { key: 'npo', label: 'Non Profit Organisation (NPO)' },
+                    { key: 'complexOwnership', label: 'Complex or opaque ownership/control structure' },
+                    { key: 'cashIntensive', label: 'Cash intensive activities/payment method' },
+                    { key: 'intermediaries', label: 'Use of intermediaries, agents or nominees' },
+                  ].map((it) => (
+                    <label key={it.key} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', cursor: isReadOnly ? 'not-allowed' : 'pointer', fontSize: '0.825rem', marginBottom: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.riskIndicators.client[it.key as keyof OnboardingCase['riskIndicators']['client']] as boolean}
+                        disabled={isReadOnly}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormData((prev) => ({
+                            ...prev,
+                            riskIndicators: {
+                              ...prev.riskIndicators,
+                              client: { ...prev.riskIndicators.client, [it.key]: checked },
+                            },
+                          }));
+                        }}
+                      />
+                      <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>{it.label}</span>
+                    </label>
+                  ))}
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Other, specify</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Specify other client risk indicator..."
+                      value={formData.riskIndicators.client.other}
+                      disabled={isReadOnly}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          riskIndicators: {
+                            ...prev.riskIndicators,
+                            client: { ...prev.riskIndicators.client, other: e.target.value },
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* B. Geographic Risk Indicators */}
+                <div className="card" style={{ padding: '1rem' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.75rem' }}>
+                    B. Geographic Risk Indicators
+                  </div>
+
+                  {[
+                    { key: 'fatfGreyListed', label: 'FATF grey listed jurisdiction' },
+                    { key: 'fatfBlackListed', label: 'FATF black listed jurisdiction' },
+                    { key: 'sanctionsExposed', label: 'Sanctions exposed country' },
+                    { key: 'highCorruptionOrConflict', label: 'High corruption or conflict affected area' },
+                  ].map((it) => (
+                    <label key={it.key} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', cursor: isReadOnly ? 'not-allowed' : 'pointer', fontSize: '0.825rem', marginBottom: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.riskIndicators.geography[it.key as keyof OnboardingCase['riskIndicators']['geography']] as boolean}
+                        disabled={isReadOnly}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormData((prev) => ({
+                            ...prev,
+                            riskIndicators: {
+                              ...prev.riskIndicators,
+                              geography: { ...prev.riskIndicators.geography, [it.key]: checked },
+                            },
+                          }));
+                        }}
+                      />
+                      <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>{it.label}</span>
+                    </label>
+                  ))}
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Other, specify</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Specify other geographic risk indicator..."
+                      value={formData.riskIndicators.geography.other}
+                      disabled={isReadOnly}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          riskIndicators: {
+                            ...prev.riskIndicators,
+                            geography: { ...prev.riskIndicators.geography, other: e.target.value },
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* C. Product / Service Risk Indicators */}
+                <div className="card" style={{ padding: '1rem' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.75rem' }}>
+                    C. Product / Service Risk Indicators
+                  </div>
+
+                  {[
+                    { key: 'trustOrCompanyFormation', label: 'Trust or company formation / administration' },
+                    { key: 'manageClientFundsOrAssets', label: 'Management of client funds or assets' },
+                    { key: 'crossBorderTransactions', label: 'Cross border transactions' },
+                    { key: 'highValueOrComplexTransactions', label: 'High value or complex transactions' },
+                  ].map((it) => (
+                    <label key={it.key} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', cursor: isReadOnly ? 'not-allowed' : 'pointer', fontSize: '0.825rem', marginBottom: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.riskIndicators.productService[it.key as keyof OnboardingCase['riskIndicators']['productService']] as boolean}
+                        disabled={isReadOnly}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormData((prev) => ({
+                            ...prev,
+                            riskIndicators: {
+                              ...prev.riskIndicators,
+                              productService: { ...prev.riskIndicators.productService, [it.key]: checked },
+                            },
+                          }));
+                        }}
+                      />
+                      <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>{it.label}</span>
+                    </label>
+                  ))}
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Other, specify</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Specify other product/service risk indicator..."
+                      value={formData.riskIndicators.productService.other}
+                      disabled={isReadOnly}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          riskIndicators: {
+                            ...prev.riskIndicators,
+                            productService: { ...prev.riskIndicators.productService, other: e.target.value },
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* Helper note */}
+                <div className="alert-panel" style={{ margin: 0, padding: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <Info size={16} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.75rem', lineHeight: '1.4' }}>
+                    These indicators support the professional rationale and will be stored with the case as a JSON field (<strong>RiskIndicators</strong>) for audit trails and reviewer transparency.
+                  </span>
+                </div>
+              </div>
+            </div>
+
             {/* Overall Inherent Risk Selection & Rationale */}
             <div style={{ borderTop: '1.5px solid var(--color-border)', paddingTop: '1.25rem', marginTop: '0.5rem' }}>
               <div className="grid-2" style={{ gridTemplateColumns: '200px 1fr' }}>
@@ -1420,19 +1627,28 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  {/* <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span><strong>3. Approved by Risk Partner (High Risk):</strong></span>
                     <span style={{ color: formData.signatures.riskPartner ? 'var(--color-low-risk)' : 'var(--color-text-muted)', fontWeight: 600 }}>
                       {formData.overallRiskRating === 'High' ? (
                         formData.signatures.riskPartner ? `Signed: ${formData.signatures.riskPartner.sign}` : 'Pending Risk Sign-off'
                       ) : 'Not Triggered (Low/Med Risk)'}
                     </span>
+                  </div> */}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span><strong>3. Approved by Engagement Partner:</strong></span>
+                    <span style={{ color: formData.signatures.engagementPartner ? 'var(--color-low-risk)' : 'var(--color-text-muted)', fontWeight: 600 }}>
+                      {formData.signatures.engagementPartner ? `Signed: ${formData.signatures.engagementPartner.sign}` : 'Pending Partner Approval'}
+                    </span>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span><strong>4. Approved by Engagement Partner:</strong></span>
-                    <span style={{ color: formData.signatures.engagementPartner ? 'var(--color-low-risk)' : 'var(--color-text-muted)', fontWeight: 600 }}>
-                      {formData.signatures.engagementPartner ? `Signed: ${formData.signatures.engagementPartner.sign}` : 'Pending Partner Approval'}
+                    <span><strong>4. Approved by Risk Partner (High Risk):</strong></span>
+                    <span style={{ color: formData.signatures.riskPartner ? 'var(--color-low-risk)' : 'var(--color-text-muted)', fontWeight: 600 }}>
+                      {formData.overallRiskRating === 'High' ? (
+                        formData.signatures.riskPartner ? `Signed: ${formData.signatures.riskPartner.sign}` : 'Pending Risk Sign-off'
+                      ) : 'Not Triggered (Low/Med Risk)'}
                     </span>
                   </div>
                 </div>
@@ -1466,6 +1682,16 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
             <button className="btn btn-secondary" onClick={handleSaveDraft}>
               <Save size={16} />
               Save draft
+            </button>
+          )}
+
+          {activeStep === 7 && (
+            <button
+              className="btn btn-secondary"
+              onClick={() => downloadCasePdfExtract(formData)}
+            >
+              <FileText size={16} />
+              Download PDF extract
             </button>
           )}
 

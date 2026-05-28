@@ -73,6 +73,29 @@ erDiagram
 | Overall risk rating | `OverallRiskRating` | Choice | Yes | Calculated in app; stored on save. `Low` \| `Medium` \| `High` |
 | Risk rationale | `RiskRationale` | Multiple lines of text | Yes* | *Required on submit |
 
+#### 1.2.1 Section 3 Risk Indicator checklist (flat columns)
+
+These are the tick-box indicators you flagged as missing in Section 3. Use **Yes/No** columns for each checkbox and **Single line of text** for “Other, specify”.
+
+| Group | Column display name | Internal name | Type | Required | Notes |
+| :--- | :--- | :--- | :--- | :---: | :--- |
+| A | PEP or close associate | `ClientRiskPEPOrAssociate` | Yes/No | No | Client risk indicator |
+| A | Non Profit Organisation (NPO) | `ClientRiskNPO` | Yes/No | No | Client risk indicator |
+| A | Complex/opaque ownership | `ClientRiskComplexOwnership` | Yes/No | No | Client risk indicator |
+| A | Cash intensive activities/payment | `ClientRiskCashIntensive` | Yes/No | No | Client risk indicator |
+| A | Intermediaries/agents/nominees | `ClientRiskIntermediaries` | Yes/No | No | Client risk indicator |
+| A | Other (specify) | `ClientRiskOther` | Single line of text | No | |
+| B | FATF grey listed jurisdiction | `GeoRiskFATFGreyListed` | Yes/No | No | Geographic risk indicator |
+| B | FATF black listed jurisdiction | `GeoRiskFATFBlackListed` | Yes/No | No | Geographic risk indicator |
+| B | Sanctions exposed country | `GeoRiskSanctionsExposed` | Yes/No | No | Geographic risk indicator |
+| B | High corruption/conflict area | `GeoRiskHighCorruptionConflict` | Yes/No | No | Geographic risk indicator |
+| B | Other (specify) | `GeoRiskOther` | Single line of text | No | |
+| C | Trust/company formation/administration | `ProdRiskTrustCompanyFormation` | Yes/No | No | Product/service risk indicator |
+| C | Management of client funds/assets | `ProdRiskManageClientFundsAssets` | Yes/No | No | Product/service risk indicator |
+| C | Cross border transactions | `ProdRiskCrossBorderTransactions` | Yes/No | No | Product/service risk indicator |
+| C | High value/complex transactions | `ProdRiskHighValueComplexTransactions` | Yes/No | No | Product/service risk indicator |
+| C | Other (specify) | `ProdRiskOther` | Single line of text | No | |
+
 ---
 
 ### 1.3 CDD measures (checklist)
@@ -164,9 +187,12 @@ erDiagram
 | Engagement partner name | `EngagementPartnerSignName` | Single line of text | No | |
 | Engagement partner date | `EngagementPartnerSignDate` | Date and Time | No | |
 | Engagement partner signature | `EngagementPartnerSignText` | Single line of text | No | |
+| Compliance review comment | `ComplianceReviewComment` | Multiple lines of text | No | Captures reviewer notes during Compliance sign-off |
+| Engagement partner review comment | `EPReviewComment` | Multiple lines of text | No | Captures reviewer notes during EP sign-off |
 | Risk partner name | `RiskPartnerSignName` | Single line of text | No | |
 | Risk partner date | `RiskPartnerSignDate` | Date and Time | No | |
 | Risk partner signature | `RiskPartnerSignText` | Single line of text | No | |
+| Risk partner review comment | `RPReviewComment` | Multiple lines of text | No | Captures reviewer notes during RP sign-off |
 
 ---
 
@@ -179,6 +205,7 @@ erDiagram
 | Compliance reviewer email | `ComplianceReviewerEmail` | Single line of text | No | Set by preparer at Step 7 sign-off; first reviewer after submit |
 | Engagement partner reviewer email | `EngagementPartnerReviewerEmail` | Single line of text | No | Final approver (or after Risk Partner on high risk / PEP) |
 | Risk partner reviewer email | `RiskPartnerReviewerEmail` | Single line of text | No | Used when `OverallRiskRating` = High or `IsPEP` = Yes |
+| Workflow assignees (JSON fallback) | `WorkflowAssignees` (or `WorkflowAssigneesJson`) | Multiple lines of text | No | Optional fallback storage if the 3 email columns are missing |
 | Date created | `DateCreated` | Date and Time | Yes | Set on create; can mirror `Created` |
 | Last updated | `LastUpdated` | Date and Time | Yes | Updated on each save |
 | Created by (preparer) | `Created` | Person or Group | Auto | SharePoint system column |
@@ -190,8 +217,10 @@ erDiagram
 - `Pending Compliance`
 - `Pending Engagement Partner`
 - `Pending Risk Partner`
-- `Approved`
-- `Returned`
+- `ReturnedToPreparer`
+- `ReturnedToCompliance`
+- `ReturnedToEP`
+- `Closed`
 - `Rejected`
 
 ---
@@ -461,10 +490,13 @@ Enable **cascade delete** only if business rules allow removing a case and all c
 | View name | Filter |
 | :--- | :--- |
 | My drafts | `WorkflowStatus` = Draft AND `Created By` = [Me] |
+| Returned to preparer | `WorkflowStatus` = ReturnedToPreparer AND `Created By` = [Me] |
 | Pending compliance | `WorkflowStatus` = Pending Compliance |
 | Pending engagement partner | `WorkflowStatus` = Pending Engagement Partner |
 | Pending risk partner | `WorkflowStatus` = Pending Risk Partner AND `OverallRiskRating` = High |
-| Approved clients | `WorkflowStatus` = Approved |
+| Returned to compliance | `WorkflowStatus` = ReturnedToCompliance |
+| Returned to engagement partner | `WorkflowStatus` = ReturnedToEP |
+| Closed clients | `WorkflowStatus` = Closed |
 | Malawi office | `Office` = Malawi |
 | High risk register | `OverallRiskRating` = High |
 

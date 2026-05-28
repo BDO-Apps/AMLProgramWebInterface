@@ -30,8 +30,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const total = cases.length;
     const pending = cases.filter(c => c.status.startsWith('Pending')).length;
     const highRisk = cases.filter(c => c.overallRiskRating === 'High').length;
-    const approved = cases.filter(c => c.status === 'Approved').length;
-    const upcomingReviews = cases.filter(c => c.status === 'Approved' && c.nextReviewDate).length;
+    const approved = cases.filter(c => c.status === 'Closed').length;
+    const upcomingReviews = cases.filter(c => c.status === 'Closed' && c.nextReviewDate).length;
 
     return { total, pending, highRisk, approved, upcomingReviews };
   }, [cases]);
@@ -57,7 +57,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           caseId: c.id
         });
       }
-      if (c.status === 'Returned') {
+      if (c.status === 'ReturnedToPreparer' || c.status === 'ReturnedToCompliance' || c.status === 'ReturnedToEP') {
         list.push({
           id: `alert-ret-${c.id}`,
           type: 'warning',
@@ -107,6 +107,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (statusFilter !== 'All') {
       if (statusFilter === 'Pending') {
         result = result.filter(c => c.status.startsWith('Pending'));
+      } else if (statusFilter === 'Returned') {
+        result = result.filter(
+          c =>
+            c.status === 'ReturnedToPreparer' ||
+            c.status === 'ReturnedToCompliance' ||
+            c.status === 'ReturnedToEP'
+        );
       } else {
         result = result.filter(c => c.status === statusFilter);
       }
@@ -317,7 +324,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {/* Filter and Sort Tabs */}
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: '2px', backgroundColor: 'var(--bg-app)', padding: '2px', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-                {['All', 'Draft', 'Pending', 'Returned', 'Approved'].map(tab => (
+                {['All', 'Draft', 'Pending', 'Returned', 'Closed'].map(tab => (
                   <button
                     key={tab}
                     className="btn"
@@ -377,9 +384,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     // Status badge class mapping
                     let statusBadge = 'badge-draft';
                     if (c.status.startsWith('Pending')) statusBadge = 'badge-pending';
-                    if (c.status === 'Returned') statusBadge = 'badge-returned';
+                    if (c.status === 'ReturnedToPreparer' || c.status === 'ReturnedToCompliance' || c.status === 'ReturnedToEP') statusBadge = 'badge-returned';
                     if (c.status === 'Rejected') statusBadge = 'badge-rejected';
-                    if (c.status === 'Approved') statusBadge = 'badge-low';
+                    if (c.status === 'Closed') statusBadge = 'badge-low';
 
                     return (
                       <tr key={c.id}>

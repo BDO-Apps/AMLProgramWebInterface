@@ -23,25 +23,52 @@ export const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
   const [reviewerSign, setReviewerSign] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
+
+  const returnActionLabel = useMemo(() => {
+    if (currentUser.role === 'Compliance') return 'Return to Preparer';
+    if (currentUser.role === 'EngagementPartner') return 'Return to Compliance';
+    if (currentUser.role === 'RiskPartner') return 'Return to Engagement Partner';
+    return 'Return';
+  }, [currentUser.role]);
+
+  const groupedEvidence = useMemo(() => {
+    const docs = activeCase.documents || [];
+    const inCategory = (...cats: string[]) => docs.filter((d) => cats.includes(d.category));
+    return {
+      idsAndDirectors: inCategory('ID_Passport', 'CR6_Directors', 'Incorporation_Doc', 'Trust_Deed', 'BO_Declaration'),
+      cdd: inCategory('ID_Passport', 'Incorporation_Doc', 'CR6_Directors', 'Trust_Deed', 'BO_Declaration'),
+      edd: inCategory('EDD_Funds_Proof', 'PEP_Mitigation'),
+      all: docs,
+    };
+  }, [activeCase.documents]);
 
   // Determine if the current user is the authorized handler for this case
   const isAuthorizedHandler = useMemo(() => {
     // If case is not pending reviews, no action allowed
-    if (activeCase.status === 'Draft' || activeCase.status === 'Approved' || activeCase.status === 'Rejected') {
-      return false;
-    }
-    
-    // Check handler email matching
-    const handler = activeCase.currentHandler.trim().toLowerCase();
-    const userEmail = currentUser.email.trim().toLowerCase();
-    if (handler && handler !== userEmail) {
+    if (activeCase.status === 'Draft' || activeCase.status === 'Closed' || activeCase.status === 'Rejected') {
       return false;
     }
 
     // Role verification
-    if (activeCase.status === 'Pending Compliance' && currentUser.role === 'Compliance') return true;
-    if (activeCase.status === 'Pending Risk Partner' && currentUser.role === 'RiskPartner') return true;
-    if (activeCase.status === 'Pending Engagement Partner' && currentUser.role === 'EngagementPartner') return true;
+    if (
+      (activeCase.status === 'Pending Compliance' || activeCase.status === 'ReturnedToCompliance') &&
+      currentUser.role === 'Compliance'
+    ) {
+      return true;
+    }
+    if (
+      (activeCase.status === 'Pending Risk Partner') &&
+      currentUser.role === 'RiskPartner'
+    ) {
+      return true;
+    }
+    if (
+      (activeCase.status === 'Pending Engagement Partner' || activeCase.status === 'ReturnedToEP') &&
+      currentUser.role === 'EngagementPartner'
+    ) {
+      return true;
+    }
 
     return false;
   }, [activeCase.status, activeCase.currentHandler, currentUser.role, currentUser.email]);
@@ -91,6 +118,63 @@ export const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {previewPdf && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            zIndex: 1200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={() => setPreviewPdf(null)}
+        >
+          <div
+            className="card"
+            style={{
+              width: 'min(1100px, 96vw)',
+              height: 'min(760px, 92vh)',
+              padding: '0.75rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex-between" style={{ alignItems: 'center' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>{previewPdf.name}</div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => window.open(previewPdf.url, '_blank', 'noopener,noreferrer')}
+                >
+                  Open in new tab
+                </button>
+                <button className="btn btn-secondary" onClick={() => setPreviewPdf(null)}>
+                  Close
+                </button>
+              </div>
+            </div>
+            <iframe
+              title={`PDF preview ${previewPdf.name}`}
+              src={previewPdf.url}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: '1px solid var(--color-border)',
+                borderRadius: '8px',
+                backgroundColor: 'white',
+              }}
+            />
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+              If this SharePoint PDF cannot render in-frame due to browser security policy, use "Open in new tab".
+            </span>
+          </div>
+        </div>
+      )}
       
       {/* Active review header */}
       {isAuthorizedHandler ? (
@@ -125,7 +209,7 @@ export const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
               }}
               onClick={() => { setAction('Return'); setError(''); }}
             >
-              <ArrowLeftRight size={14} /> Return to Preparer
+              <ArrowLeftRight size={14} /> {returnActionLabel}
             </button>
 
             <button 
@@ -186,7 +270,7 @@ export const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
         <div className="card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'var(--bg-app)' }}>
           <Clock size={16} style={{ color: 'var(--color-text-muted)' }} />
           <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', fontWeight: 550 }}>
-            {activeCase.status === 'Approved' ? (
+            {activeCase.status === 'Closed' ? (
               <span style={{ color: 'var(--color-low-risk)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                 <ShieldCheck size={14} /> Onboarding Portfolio is APPROVED & READ-ONLY (Locked under SharePoint Retention labels)
               </span>
@@ -205,6 +289,77 @@ export const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
       )}
 
       {/* Audit Logs Timeline Panel */}
+      <div className="card">
+        <h3 style={{ fontSize: '0.9rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-secondary)', letterSpacing: '0.05em', marginBottom: '1rem' }}>
+          Reviewer Evidence View
+        </h3>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+          {[
+            {
+              title: 'Directors, IDs & BO Evidence',
+              subtitle: `Directors captured: ${activeCase.directors.length}`,
+              files: groupedEvidence.idsAndDirectors,
+            },
+            {
+              title: 'CDD Evidence',
+              subtitle: `CDD checks selected: ${Object.values(activeCase.cddMeasures).filter(Boolean).length}/6`,
+              files: groupedEvidence.cdd,
+            },
+            {
+              title: 'EDD / Source of Funds Evidence',
+              subtitle: `EDD checks selected: ${Object.values(activeCase.eddApplied).filter(Boolean).length}/6`,
+              files: groupedEvidence.edd,
+            },
+          ].map((section) => (
+            <div key={section.title} style={{ border: '1px solid var(--color-border)', borderRadius: '8px', padding: '0.75rem', backgroundColor: 'var(--bg-app)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.2rem' }}>{section.title}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>{section.subtitle}</div>
+              {section.files.length === 0 ? (
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>No files in this section.</div>
+              ) : (
+                section.files.map((doc) => (
+                  <div key={`${section.title}-${doc.id}`} style={{ fontSize: '0.75rem', marginBottom: '0.35rem', lineHeight: 1.35 }}>
+                    {doc.webUrl ? (
+                      <button
+                        className="btn"
+                        style={{
+                          padding: 0,
+                          border: 0,
+                          background: 'transparent',
+                          color: 'var(--color-primary)',
+                          fontWeight: 600,
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => {
+                          if (doc.name.toLowerCase().endsWith('.pdf')) {
+                            setPreviewPdf({ url: doc.webUrl!, name: doc.name });
+                          } else {
+                            window.open(doc.webUrl, '_blank', 'noopener,noreferrer');
+                          }
+                        }}
+                      >
+                        {doc.name}
+                      </button>
+                    ) : (
+                      <span style={{ fontWeight: 600 }}>{doc.name}</span>
+                    )}
+                    <div style={{ color: 'var(--color-text-muted)' }}>
+                      {doc.category} • {doc.size} • {doc.uploadDate} • {doc.uploadedBy || 'Unknown uploader'}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+          Total attached documents: <strong>{groupedEvidence.all.length}</strong>
+        </div>
+      </div>
+
       <div className="card">
         <h3 style={{ fontSize: '0.9rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-secondary)', letterSpacing: '0.05em', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <MessageSquare size={16} style={{ color: 'var(--color-primary)' }} />

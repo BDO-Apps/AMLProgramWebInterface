@@ -211,6 +211,7 @@ export class GraphClient {
       name: string;
       size: number;
       createdDateTime: string;
+      webUrl?: string;
       fields: Record<string, unknown>;
     }>
   > {
@@ -222,6 +223,7 @@ export class GraphClient {
           name: string;
           size: number;
           createdDateTime: string;
+          webUrl?: string;
           file?: object;
           listItem?: { fields?: Record<string, unknown> };
         }>;
@@ -234,6 +236,7 @@ export class GraphClient {
           name: item.name,
           size: item.size,
           createdDateTime: item.createdDateTime,
+          webUrl: item.webUrl,
           fields: item.listItem?.fields ?? {},
         }));
     } catch {
